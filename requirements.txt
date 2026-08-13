@@ -10,3 +10,5 @@ requests
 python-dotenv
 torch
 torchvision
+datasets==2.16.1
+pyarrow==14.0.1
