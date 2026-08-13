@@ -1,20 +1,16 @@
 import os
 from dotenv import load_dotenv
 
-# Load local .env file if available
 load_dotenv()
 
 def get_secret(key_name: str, default: str = "") -> str:
-    """Retrieves secret from Streamlit secrets (for cloud) or environment variables (for local)."""
-    # 1. Check Streamlit Secrets (Cloud deployment)
+    """Retrieves secret from Streamlit secrets or environment variables."""
     try:
         import streamlit as st
         if hasattr(st, "secrets") and key_name in st.secrets:
             return str(st.secrets[key_name])
     except Exception:
         pass
-
-    # 2. Check Environment Variables / .env file
     return os.getenv(key_name, default)
 
 class Config:
@@ -24,10 +20,10 @@ class Config:
     
     COLLECTION_NAME = get_secret("COLLECTION_NAME", "saree_catalog")
     VECTOR_SIZE = int(get_secret("VECTOR_SIZE", "512"))
+    MODEL_NAME = get_secret("MODEL_NAME", "patrickjohncyh/fashion-clip")
 
     @classmethod
     def validate(cls):
-        """Ensures all required configuration keys are present."""
         missing = []
         if not cls.GEMINI_API_KEY:
             missing.append("GEMINI_API_KEY")
@@ -39,5 +35,5 @@ class Config:
         if missing:
             raise ValueError(
                 f"Missing environment variables: {', '.join(missing)}. "
-                "Please set them in your local .env file or Streamlit Cloud Secrets."
+                "Please set them in Streamlit Cloud Secrets."
             )
