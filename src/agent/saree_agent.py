@@ -1,9 +1,19 @@
 import re
-from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from src.config import Config
 from src.agent.tools import search_similar_sarees
+
+# Safe imports for different LangChain releases
+try:
+    from langchain.agents import create_tool_calling_agent, AgentExecutor
+except ImportError:
+    try:
+        from langchain.agents.tool_calling.base import create_tool_calling_agent
+        from langchain.agents.agent import AgentExecutor
+    except ImportError:
+        create_tool_calling_agent = None
+        AgentExecutor = None
 
 class SareeAgent:
     def __init__(self):
@@ -17,32 +27,29 @@ class SareeAgent:
                 temperature=0.2
             )
         except Exception as e:
-            print(f"Warning: Could not initialize Gemini LLM ({e}). Agent will use direct vector search.")
-        
+            print(f"Warning: Could not initialize Gemini LLM ({e}).")
+
         self.tools = [search_similar_sarees]
-        
-        prompt = ChatPromptTemplate.from_messages([
-            (
-                "system",
-                "You are an expert Indian saree stylist and visual search assistant. "
-                "Help users find visually similar sarees based on color, pattern, border, pallu, and weave. "
-                "Always call the `search_similar_sarees` tool when the user provides an image or asks for recommendations. "
-                "When returning search results, present each item clearly with its Name, Price, Match Score, and Website Link."
-            ),
-            MessagesPlaceholder(variable_name="chat_history", optional=True),
-            ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
-        
-        if self.llm:
+        self.executor = None
+
+        if self.llm and create_tool_calling_agent and AgentExecutor:
             try:
+                prompt = ChatPromptTemplate.from_messages([
+                    (
+                        "system",
+                        "You are an expert Indian saree stylist and visual search assistant. "
+                        "Help users find visually similar sarees based on color, pattern, border, pallu, and weave. "
+                        "Always call the `search_similar_sarees` tool when the user provides an image or asks for recommendations. "
+                        "When returning search results, present each item clearly with its Name, Price, Match Score, and Website Link."
+                    ),
+                    MessagesPlaceholder(variable_name="chat_history", optional=True),
+                    ("human", "{input}"),
+                    MessagesPlaceholder(variable_name="agent_scratchpad"),
+                ])
                 agent = create_tool_calling_agent(self.llm, self.tools, prompt)
                 self.executor = AgentExecutor(agent=agent, tools=self.tools, verbose=True)
             except Exception as e:
-                print(f"Warning: Could not bind agent executor ({e}).")
-                self.executor = None
-        else:
-            self.executor = None
+                print(f"Warning: Could not bind agent executor ({e}). Falling back to direct execution.")
 
     def run(self, user_input: str) -> str:
         """Executes query through LLM agent with fail-safe fallback to direct visual search."""
