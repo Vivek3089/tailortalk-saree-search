@@ -1,80 +1,88 @@
 import os
+import sys
+
+# Ensure the project root directory is in the Python module search path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 import streamlit as st
 from PIL import Image
 from src.agent.saree_agent import SareeAgent
-from src.utils.image_helpers import load_image_from_input
 
-# Page configuration
+# Page Configuration
 st.set_page_config(
-    page_title="Saree Visual Search Assistant",
+    page_title="TailorTalk - Saree Visual Search",
+    page_icon="🥻",
     layout="wide"
 )
 
 st.title("TailorTalk - Saree Visual Search")
-st.caption("Upload a saree image or provide an image URL to find visually similar items from your catalogue.")
+st.write("Upload a saree image or provide an image URL to find visually similar items from your catalogue.")
 
-# Initialize Saree Agent in Streamlit Session State
+# Initialize Saree Agent in Session State
 if "agent" not in st.session_state:
-    with st.spinner("Initializing agent and loading models..."):
+    try:
         st.session_state.agent = SareeAgent()
+    except Exception as e:
+        st.error(f"Failed to initialize search agent: {e}")
 
-# Sidebar for Image Input
+# Sidebar - Image Input Setup
 st.sidebar.header("Visual Search Input")
-input_type = st.sidebar.radio("Choose Input Method:", ["File Upload", "Image URL"])
+input_option = st.sidebar.radio("Choose Input Method:", ("File Upload", "Image URL"))
 
-uploaded_image = None
-image_ref = None
+query_image = None
+image_source_path = None
 
-if input_type == "File Upload":
-    file = st.sidebar.file_uploader("Upload Saree Image", type=["jpg", "jpeg", "png", "webp"])
-    if file is not None:
-        uploaded_image = Image.open(file)
-        st.sidebar.image(uploaded_image, caption="Query Image", use_container_width=True)
-        # Save temporary image file to pass path to the tool
-        temp_path = "temp_query.png"
-        uploaded_image.save(temp_path)
-        image_ref = temp_path
-else:
-    url = st.sidebar.text_input("Enter Image URL:")
-    if url.strip():
+if input_option == "File Upload":
+    uploaded_file = st.sidebar.file_uploader("Upload Saree Image", type=["jpg", "jpeg", "png", "webp"])
+    if uploaded_file is not None:
+        query_image = Image.open(uploaded_file)
+        # Save temp copy for embedder pipeline
+        image_source_path = "temp_query.png"
+        query_image.save(image_source_path)
+        st.sidebar.image(query_image, caption="Query Image", use_container_width=True)
+
+elif input_option == "Image URL":
+    url_input = st.sidebar.text_input("Enter Saree Image URL:")
+    if url_input:
+        image_source_path = url_input.strip()
         try:
-            uploaded_image = load_image_from_input(url.strip())
-            st.sidebar.image(uploaded_image, caption="Query Image", use_container_width=True)
-            image_ref = url.strip()
+            import requests
+            import io
+            response = requests.get(image_source_path, timeout=5)
+            query_image = Image.open(io.BytesIO(response.content))
+            st.sidebar.image(query_image, caption="Query Image", use_container_width=True)
         except Exception as e:
-            st.sidebar.error(f"Failed to load image from URL: {e}")
+            st.sidebar.error(f"Could not load image from URL: {e}")
 
-# Chat History Setup
+# Chat Interface
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Render Chat History
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# User Chat Input
 user_prompt = st.chat_input("Ask a question or request recommendations...")
 
 if user_prompt:
-    # Append user prompt to history
     st.session_state.messages.append({"role": "user", "content": user_prompt})
     with st.chat_message("user"):
         st.markdown(user_prompt)
 
-    # Attach image context to prompt if an image is loaded
-    full_query = user_prompt
-    if image_ref:
-        full_query += f"\n[Query Image Source: {image_ref}]"
-
-    # Run Saree Agent
     with st.chat_message("assistant"):
-        with st.spinner("Searching catalogue for matching recommendations..."):
-            try:
-                response = st.session_state.agent.run(full_query)
-                st.markdown(response)
-                st.session_state.messages.append({"role": "assistant", "content": response})
-            except Exception as e:
-                error_msg = f"Error executing search: {str(e)}"
-                st.error(error_msg)
-                st.session_state.messages.append({"role": "assistant", "content": error_msg})
+        with st.spinner("Searching catalogue for visual matches..."):
+            if "agent" in st.session_state and st.session_state.agent:
+                # Include image context if available
+                full_input = user_prompt
+                if image_source_path:
+                    full_input += f"\n[Query Image Source: {image_source_path}]"
+                
+                try:
+                    response_text = st.session_state.agent.run(full_input)
+                except Exception as err:
+                    response_text = f"Error executing search: {err}"
+            else:
+                response_text = "Search agent is not initialized. Check your environment variables."
+
+            st.markdown(response_text)
+            st.session_state.messages.append({"role": "assistant", "content": response_text})
