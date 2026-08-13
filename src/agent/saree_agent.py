@@ -1,18 +1,9 @@
 import re
+from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from src.config import Config
 from src.agent.tools import search_similar_sarees
-
-# Multi-version import support for LangChain Agents
-try:
-    from langchain.agents import create_tool_calling_agent, AgentExecutor
-except ImportError:
-    try:
-        from langchain.agents.tool_calling.base import create_tool_calling_agent
-        from langchain.agents import AgentExecutor
-    except ImportError:
-        from langchain_classic.agents import create_tool_calling_agent, AgentExecutor
 
 class SareeAgent:
     def __init__(self):
@@ -25,8 +16,8 @@ class SareeAgent:
                 google_api_key=Config.GEMINI_API_KEY,
                 temperature=0.2
             )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: Could not initialize Gemini LLM ({e}). Agent will use direct vector search.")
         
         self.tools = [search_similar_sarees]
         
@@ -47,14 +38,14 @@ class SareeAgent:
             try:
                 agent = create_tool_calling_agent(self.llm, self.tools, prompt)
                 self.executor = AgentExecutor(agent=agent, tools=self.tools, verbose=True)
-            except Exception:
+            except Exception as e:
+                print(f"Warning: Could not bind agent executor ({e}).")
                 self.executor = None
         else:
             self.executor = None
 
     def run(self, user_input: str) -> str:
         """Executes query through LLM agent with fail-safe fallback to direct visual search."""
-        # Try running through LLM Agent
         if self.executor:
             try:
                 response = self.executor.invoke({"input": user_input})
