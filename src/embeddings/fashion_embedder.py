@@ -9,9 +9,8 @@ class FashionEmbedder:
             model_name = getattr(Config, "MODEL_NAME", "patrickjohncyh/fashion-clip")
             
         self.device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
-        print(f"Loading Fashion-CLIP from HuggingFace ({model_name}) on device: {self.device}...")
+        print(f"Loading Fashion-CLIP model ({model_name}) on device: {self.device}...")
         
-        # Load directly via Transformers (No datasets / pyarrow dependency)
         self.model = CLIPModel.from_pretrained(model_name).to(self.device)
         self.processor = CLIPProcessor.from_pretrained(model_name)
 
@@ -20,15 +19,22 @@ class FashionEmbedder:
         if image.mode != "RGB":
             image = image.convert("RGB")
 
-        # Process image input
         inputs = self.processor(images=image, return_tensors="pt").to(self.device)
         
         with torch.no_grad():
-            image_features = self.model.get_image_features(**inputs)
+            outputs = self.model.get_image_features(**inputs)
             
-            # L2 Normalize the embedding
-            norm = image_features.norm(p=2, dim=-1, keepdim=True)
+            # Handle both Tensor and ModelOutput return types robustly
+            if hasattr(outputs, "pooler_output"):
+                features = outputs.pooler_output
+            elif hasattr(outputs, "last_hidden_state"):
+                features = outputs.last_hidden_state[:, 0, :]
+            else:
+                features = outputs
+
+            # L2 Normalize the vector
+            norm = features.norm(p=2, dim=-1, keepdim=True)
             if norm > 0:
-                image_features = image_features / norm
+                features = features / norm
                 
-            return image_features.cpu().numpy().flatten().tolist()
+            return features.cpu().numpy().flatten().tolist()
