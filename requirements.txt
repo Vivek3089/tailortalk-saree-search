@@ -4,11 +4,9 @@ langchain-core
 langchain-google-genai
 google-genai
 qdrant-client
-fashion-clip
+transformers
 pillow
 requests
 python-dotenv
 torch
 torchvision
-datasets==2.16.1
-pyarrow==14.0.1
